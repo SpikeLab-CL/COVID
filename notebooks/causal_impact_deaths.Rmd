@@ -1,0 +1,66 @@
+---
+title: "Causal Impact for deaths"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+```{r}
+library(CausalImpact)
+library(feather)
+library(ggplot2)
+```
+
+
+```{r}
+alpha = 0.1
+measure_performance = FALSE
+if(measure_performance){
+  data_file = "../datos/input_causal_impact_error.feather"
+  output_file = '../datos/results_causal_impact_error.feather'
+} else
+{
+  data_file = "../datos/input_causal_impact.feather"
+  output_file = '../datos/results_causal_impact.feather'
+}
+  
+
+df = read_feather(data_file) 
+causes = unique(df$cause)
+
+results_list <- list()
+count = 1
+
+for (cause in causes){
+    print(cause)
+    df_cause = df[df$cause==cause, ]
+    
+    min_date = min(df_cause$date)
+    max_date = max(df_cause$date)
+    pre_max = max(df_cause[df_cause$pre_period_flag==1,]$date)
+    post_min = min(df_cause[df_cause$pre_period_flag==0,]$date)
+    pre.period <- as.POSIXct(c(min_date, pre_max))
+    post.period <- as.POSIXct(c(post_min, max_date))
+    
+    x = df_cause[ , grepl("x", names(df_cause))]
+    data = cbind(y=df_cause$y, x)
+    data <- zoo(data, df_cause$date)
+    
+    impact <- CausalImpact(data, pre.period, post.period, alpha=alpha)#, model.args = list(nseason=52))
+    impact.plot <- plot(impact)
+    impact.plot <- impact.plot + theme_bw(base_size = 10) +
+                 ggtitle(paste("Impact of covid for ", cause, sep=" "))
+    print(impact.plot)
+    results = data.frame(impact[[1]])
+    results$cause = cause
+    results$date = df_cause$date
+    results_list[[count]] <- results
+  
+    
+    count <- count + 1
+}
+all_results = do.call(rbind, results_list) #concatenate list of dataframes
+write_feather(all_results, output_file)
+```
